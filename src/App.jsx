@@ -1240,11 +1240,17 @@ function ProfileTab({ s, update, db, flash, role }) {
     return { lastCao, lastThap };
   };
   const { lastCao, lastThap } = rankReview();
-  const createFolder = () => {
-    const folderName = `${s.rank}.${s.ten}.${s.hocLop}.${fmtDMY(s.ngayBatDau)}`;
-    const path = `${db.settings.driveRoot} / ${folderName}`;
-    update({ driveFolder: path });
-    flash(`Đã tạo thư mục: ${folderName}`);
+  const [driveLink, setDriveLink] = useState("");
+  const folderName = `${s.rank}.${s.ten}.${s.hocLop}.${fmtDMY(s.ngayBatDau)}`;
+  const saveFolderName = () => {
+    update({ driveFolder: `${db.settings.driveRoot} / ${folderName}` });
+    flash("Đã lưu tên thư mục");
+  };
+  const saveDriveLink = () => {
+    if (!/^https?:\/\//.test(driveLink.trim())) return flash("Dán link Drive hợp lệ (https://...)");
+    update({ driveFolder: driveLink.trim() });
+    setDriveLink("");
+    flash("Đã lưu link Drive");
   };
   const canEdit = role === "admin";
 
@@ -1295,17 +1301,38 @@ function ProfileTab({ s, update, db, flash, role }) {
 
       <Card style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 11, color: T.sub, textTransform: "uppercase", marginBottom: 8 }}>Thư mục Drive</div>
+
         {s.driveFolder ? (
+          <div style={{ marginBottom: canEdit ? 12 : 0 }}>
+            <div style={{ fontSize: 10.5, color: T.sub, marginBottom: 3 }}>Đang lưu:</div>
+            {/^https?:\/\//.test(s.driveFolder)
+              ? <a href={s.driveFolder} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: T.accent, wordBreak: "break-all", display: "inline-flex", gap: 6, alignItems: "flex-start" }}><FolderPlus size={14} style={{ flexShrink: 0, marginTop: 2 }} /> {s.driveFolder}</a>
+              : <div style={{ fontSize: 12.5, color: T.ink, wordBreak: "break-all", display: "flex", gap: 6, alignItems: "flex-start" }}><FolderPlus size={14} style={{ flexShrink: 0, marginTop: 2 }} /> {s.driveFolder}</div>}
+          </div>
+        ) : null}
+
+        {canEdit && (
           <>
-            <div style={{ fontSize: 12.5, color: T.accent, wordBreak: "break-all", display: "flex", gap: 6, alignItems: "flex-start" }}><FolderPlus size={14} style={{ flexShrink: 0, marginTop: 2 }} /> {s.driveFolder}</div>
-            {canEdit && <Btn kind="dark" small onClick={createFolder} style={{ marginTop: 8 }}><FolderPlus size={14} /> Tạo lại theo tên mới</Btn>}
+            <div style={{ background: T.bg2, borderRadius: T.rSm, padding: "9px 11px", marginBottom: 10 }}>
+              <div style={{ fontSize: 10.5, color: T.sub, marginBottom: 3 }}>Tên thư mục theo quy tắc</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.gold, wordBreak: "break-all" }}>{folderName}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <Btn small kind="dark" onClick={saveFolderName}><Save size={14} /> Lưu tên này</Btn>
+              <a href="https://drive.google.com/drive/my-drive" target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+                <Btn small kind="ghost"><ExternalLink size={14} /> Mở Google Drive</Btn>
+              </a>
+            </div>
+            <div style={{ fontSize: 11, color: T.sub, marginBottom: 6, lineHeight: 1.5 }}>
+              App chưa tự tạo được thư mục trong Drive. Bạn mở Drive tạo thư mục tên như trên, rồi dán link thư mục vào đây để bấm mở nhanh:
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={driveLink} onChange={(ev) => setDriveLink(ev.target.value)} placeholder="Dán link Google Drive…" style={{ flex: 1, boxSizing: "border-box", background: T.bg2, border: `1px solid ${T.line2}`, borderRadius: 8, padding: "9px 11px", color: T.ink, fontSize: 13, fontFamily: "inherit" }} />
+              <Btn small onClick={saveDriveLink}><Save size={14} /></Btn>
+            </div>
           </>
-        ) : canEdit ? (
-          <>
-            <Btn kind="ghost" small onClick={createFolder}><FolderPlus size={15} /> Tạo thư mục học viên</Btn>
-            <div style={{ fontSize: 10.5, color: T.tx3, marginTop: 6 }}>Quy tắc: Rank.Tên.Lớp.Ngày → {s.rank}.{s.ten}.{s.hocLop}.{fmtDMY(s.ngayBatDau) || "…"}</div>
-          </>
-        ) : <div style={{ fontSize: 12.5, color: T.sub }}>Chưa tạo</div>}
+        )}
+        {!canEdit && !s.driveFolder && <div style={{ fontSize: 12.5, color: T.sub }}>Chưa có</div>}
       </Card>
 
       {canEdit && <Btn onClick={() => setE(true)} style={{ width: "100%", justifyContent: "center" }}>Chỉnh sửa hồ sơ</Btn>}
@@ -1451,11 +1478,16 @@ function SettingsView({ db, setDb, flash }) {
             return (
               <Card key={c} style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div><div style={{ fontWeight: 700 }}>{c}</div><div style={{ fontSize: 11.5, color: T.sub }}>{cnt} học viên</div></div>
-                {made ? <Pill c={T.good}>Đã tạo</Pill> : <Btn small kind="ghost" onClick={() => { setDb((d) => ({ ...d, settings: { ...d.settings, classesCreated: [...new Set([...(d.settings.classesCreated || []), c])] } })); flash(`Đã tạo thư mục ${c}`); }}><FolderPlus size={14} /> Tạo</Btn>}
+                {made ? <Pill c={T.good}>Đã đánh dấu</Pill> : <Btn small kind="ghost" onClick={() => { setDb((d) => ({ ...d, settings: { ...d.settings, classesCreated: [...new Set([...(d.settings.classesCreated || []), c])] } })); flash(`Đã đánh dấu lớp ${c}`); }}><CheckCircle2 size={14} /> Đánh dấu</Btn>}
               </Card>
             );
           })}
-          <div style={{ fontSize: 11.5, color: T.sub, textAlign: "center", marginTop: 8 }}>Thư mục lưu tại: {db.settings.driveRoot}</div>
+          <a href="https://drive.google.com/drive/my-drive" target="_blank" rel="noreferrer" style={{ textDecoration: "none", display: "block", marginTop: 8 }}>
+            <Btn kind="ghost" small style={{ width: "100%", justifyContent: "center" }}><ExternalLink size={14} /> Mở Google Drive để tạo thư mục</Btn>
+          </a>
+          <div style={{ fontSize: 11, color: T.sub, textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
+            App chỉ đánh dấu trạng thái, chưa tự tạo thư mục trong Drive. Bạn tự tạo trong "{db.settings.driveRoot}" và đặt tên theo lớp.
+          </div>
         </div>
       )}
     </div>
