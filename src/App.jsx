@@ -4,7 +4,7 @@ import {
   Music2, Sparkles, Plus, Search, Eye, EyeOff, LogOut, GraduationCap, Target,
   FolderPlus, CheckCircle2, Circle, TrendingUp, Bell, Clock, Star, X, Save,
   ExternalLink, Link2, User, Mic2, Play, BookOpen, Youtube, Mic, Square, Trash2, Upload,
-  Menu, PanelLeftClose
+  Menu, PanelLeftClose, CheckSquare
 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, RadarChart, PolarGrid, PolarAngleAxis, Radar } from "recharts";
 
@@ -514,27 +514,72 @@ function GvHome({ db, me, open }) {
 }
 
 /* ============================ STUDENT LIST ============================ */
-function StudentRow({ s, onClick }) {
+function StudentRow({ s, onClick, selectMode, selected, onToggle, onDelete, canEdit }) {
   const left = s.soBuoiDangKy - s.sessions.length;
   const p = payState(s);
   return (
-    <Card onClick={onClick} style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-      <div style={{ width: 42, height: 42, borderRadius: 12, background: T.cardHi, display: "grid", placeItems: "center", color: RANKS[s.rank], fontWeight: 800, fontFamily: "'Playfair Display', serif", border: `1px solid ${RANKS[s.rank]}55` }}>{s.rank}</div>
+    <Card
+      onClick={selectMode ? () => onToggle(s.id) : onClick}
+      style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 12, cursor: "pointer", border: `1px solid ${selectMode && selected ? T.gold : T.line}`, background: selectMode && selected ? T.gold + "12" : T.card }}
+    >
+      {selectMode && (
+        <div style={{ flexShrink: 0, color: selected ? T.gold : T.sub }}>
+          {selected ? <CheckSquare size={20} /> : <Square size={20} />}
+        </div>
+      )}
+      <div style={{ width: 42, height: 42, borderRadius: 12, background: T.cardHi, display: "grid", placeItems: "center", color: RANKS[s.rank], fontWeight: 800, fontFamily: "'Playfair Display', serif", border: `1px solid ${RANKS[s.rank]}55`, flexShrink: 0 }}>{s.rank}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700 }}>{s.ten}</div>
         <div style={{ fontSize: 11.5, color: T.sub, display: "flex", gap: 8, marginTop: 2 }}>
           <span>{s.hocLop}</span><span>·</span><span>{s.loaiGiong}</span><span>·</span><span>Còn {left} buổi</span>
         </div>
       </div>
-      <Pill c={p.c}>{p.t}</Pill>
+      {!selectMode && <Pill c={p.c}>{p.t}</Pill>}
+      {!selectMode && canEdit && (
+        <button onClick={(ev) => { ev.stopPropagation(); onDelete(s); }} style={{ background: "none", border: "none", color: T.bad, cursor: "pointer", flexShrink: 0, padding: 4 }}>
+          <Trash2 size={16} />
+        </button>
+      )}
     </Card>
   );
 }
 function StudentList({ db, setDb, role, me, open, flash }) {
   const [q, setQ] = useState(""); const [cls, setCls] = useState("Tất cả"); const [add, setAdd] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [confirmTarget, setConfirmTarget] = useState(null); // { ids: [...], names: [...] } | null
+  const canEdit = role === "admin";
+
   let list = role === "gv" ? db.students.filter((s) => s.teacherId === me.id) : db.students;
   if (cls !== "Tất cả") list = list.filter((s) => s.hocLop === cls);
   if (q) list = list.filter((s) => s.ten.toLowerCase().includes(q.toLowerCase()));
+
+  const toggle = (id) => setSelected((a) => a.includes(id) ? a.filter((x) => x !== id) : [...a, id]);
+  const toggleAll = () => setSelected(selected.length === list.length ? [] : list.map((s) => s.id));
+
+  const doDelete = async (ids) => {
+    for (const id of ids) {
+      const st = db.students.find((s) => s.id === id);
+      if (st) {
+        for (const se of st.sessions || []) {
+          for (const r of se.records || []) await delRec(r.id);
+          for (const im of se.ghiChuImgs || []) await delImg(im.id);
+        }
+      }
+    }
+    setDb((d) => ({ ...d, students: d.students.filter((s) => !ids.includes(s.id)) }));
+    flash(ids.length > 1 ? `Đã xoá ${ids.length} học viên` : "Đã xoá học viên");
+    setSelected((a) => a.filter((x) => !ids.includes(x)));
+    setConfirmTarget(null);
+    setSelectMode(false);
+  };
+
+  const askDeleteOne = (s) => setConfirmTarget({ ids: [s.id], names: [s.ten] });
+  const askDeleteSelected = () => {
+    if (selected.length === 0) return flash("Chưa chọn học viên nào");
+    setConfirmTarget({ ids: [...selected], names: list.filter((s) => selected.includes(s.id)).map((s) => s.ten) });
+  };
+
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -543,15 +588,65 @@ function StudentList({ db, setDb, role, me, open, flash }) {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm học viên"
             style={{ width: "100%", boxSizing: "border-box", background: T.bg2, border: `1px solid ${T.line2}`, borderRadius: 12, padding: "10px 12px 10px 34px", color: T.ink, fontFamily: "inherit" }} />
         </div>
-        {role === "admin" && <Btn onClick={() => setAdd(true)}><Plus size={16} /></Btn>}
+        {canEdit && (
+          <Btn kind={selectMode ? "dark" : "ghost"} small onClick={() => { setSelectMode(!selectMode); setSelected([]); }}>
+            <CheckSquare size={15} /> {selectMode ? "Huỷ chọn" : "Chọn"}
+          </Btn>
+        )}
+        {!selectMode && role === "admin" && <Btn onClick={() => setAdd(true)}><Plus size={16} /></Btn>}
       </div>
+
+      {selectMode && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, background: T.bg2, borderRadius: T.rSm, padding: "8px 12px" }}>
+          <button onClick={toggleAll} style={{ background: "none", border: "none", color: T.gold, cursor: "pointer", fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+            <CheckSquare size={15} /> {selected.length === list.length && list.length > 0 ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 12, color: T.sub }}>{selected.length} đã chọn</span>
+            <Btn small onClick={askDeleteSelected} style={{ background: T.bad, color: T.ink }}><Trash2 size={14} /> Xoá</Btn>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 6, marginBottom: 12, overflowX: "auto", paddingBottom: 2 }}>
         {["Tất cả", ...CLASSES].map((c) => (
           <button key={c} onClick={() => setCls(c)} style={{ whiteSpace: "nowrap", border: `1px solid ${cls === c ? T.gold : T.line}`, background: cls === c ? T.gold + "22" : "transparent", color: cls === c ? T.gold : T.sub, borderRadius: 999, padding: "6px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{c}</button>
         ))}
       </div>
-      {list.length === 0 ? <Empty icon={<Users size={30} />} t="Chưa có học viên" /> : list.map((s) => <StudentRow key={s.id} s={s} onClick={() => open(s.id)} />)}
+
+      {list.length === 0 ? <Empty icon={<Users size={30} />} t="Chưa có học viên" /> : list.map((s) => (
+        <StudentRow
+          key={s.id} s={s}
+          onClick={() => open(s.id)}
+          selectMode={selectMode}
+          selected={selected.includes(s.id)}
+          onToggle={toggle}
+          onDelete={askDeleteOne}
+          canEdit={canEdit}
+        />
+      ))}
+
       {add && <AddStudent db={db} setDb={setDb} close={() => setAdd(false)} flash={flash} />}
+
+      {confirmTarget && (
+        <Sheet close={() => setConfirmTarget(null)} title="Xác nhận xoá">
+          <div style={{ fontSize: 13.5, color: T.ink, lineHeight: 1.6, marginBottom: 6 }}>
+            Bạn sắp xoá {confirmTarget.ids.length > 1 ? `${confirmTarget.ids.length} học viên` : "học viên"}:
+          </div>
+          <div style={{ background: T.bg2, borderRadius: T.rSm, padding: "10px 12px", marginBottom: 14, maxHeight: 180, overflowY: "auto" }}>
+            {confirmTarget.names.map((n, i) => (
+              <div key={i} style={{ fontSize: 13, fontWeight: 700, color: T.gold, padding: "3px 0" }}>{n}</div>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: T.bad, marginBottom: 14 }}>
+            Toàn bộ hồ sơ, lịch sử buổi học, ghi âm và ảnh ghi chú liên quan sẽ bị xoá vĩnh viễn và không thể khôi phục.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn kind="dark" onClick={() => setConfirmTarget(null)} style={{ flex: 1, justifyContent: "center" }}>Huỷ</Btn>
+            <Btn onClick={() => doDelete(confirmTarget.ids)} style={{ flex: 1, justifyContent: "center", background: T.bad, color: T.ink }}><Trash2 size={15} /> Xoá vĩnh viễn</Btn>
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }
